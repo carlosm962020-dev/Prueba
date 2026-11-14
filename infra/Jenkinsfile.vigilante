@@ -1,0 +1,47 @@
+// Job "vigilante_reporte_ventas": comprueba a las 5:45 que el reporte de AYER ya salió.
+// Cubre el caso que el job principal no puede avisar: que ni siquiera haya arrancado
+// (agente caído, Jenkins reiniciado, disparador perdido). Misma etiqueta que el principal.
+pipeline {
+    agent { label 'etl-ventas' }
+
+    triggers {
+        cron('TZ=America/Bogota\n45 5 * * *')
+    }
+
+    options {
+        timestamps()
+        timeout(time: 5, unit: 'MINUTES')
+    }
+
+    environment {
+        // Supuesto: así se llama el job principal (infra/Jenkinsfile). Su carpeta de trabajo vive
+        // junto a la de este job, en el mismo agente, y ahí queda la marca de envío.
+        JOB_PRINCIPAL = 'reporte_ventas'
+    }
+
+    stages {
+        stage('Verificar envío del día') {
+            steps {
+                // La marca la crea el pipeline al enviar: salida/.enviados/AAAAMMDD (fecha de las ventas).
+                sh '''
+                    ayer="$(TZ=America/Bogota date -d yesterday +%Y%m%d)"
+                    marca="$WORKSPACE/../$JOB_PRINCIPAL/salida/.enviados/$ayer"
+                    if [ -f "$marca" ]; then
+                        echo "OK: el reporte de $ayer se envió ($(cat "$marca"))"
+                    else
+                        echo "No existe la marca de envío de $ayer: el reporte no salió" >&2
+                        exit 1
+                    fi
+                '''
+            }
+        }
+    }
+
+    post {
+        failure {
+            mail to: 'automatizacion@pagared.com,gerencia.comercial@pagared.com',
+                 subject: "El reporte de ventas de ayer NO salió",
+                 body: "El vigilante no encontró la marca de envío. Revisar ${env.BUILD_URL}console y el job ${env.JOB_PRINCIPAL}."
+        }
+    }
+}

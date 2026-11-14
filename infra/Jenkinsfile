@@ -1,0 +1,90 @@
+// Job diario del reporte de ventas (B5.2). Dibujado para Jenkins declarativo.
+// No lo pude probar en una instancia de Jenkins: revisarlo con "Replay" antes de activarlo.
+//
+// Decisiones:
+//  * La hora se fija con TZ=America/Bogota en el disparador, sin cuentas de UTC.
+//  * Arranca a las 4:30 y no a las 6:00: deja hora y media de margen para esperar el archivo del
+//    core y reintentar. El correo sale cuando el reporte está listo, así que llega antes de las 6:00.
+//  * Agente propio (etiqueta etl-ventas) con 2 ejecutores: uno para este job y otro para el
+//    vigilante. El incidente de recaudos nació de compartir un único ejecutor con un backup de 1 h 40.
+//  * Cualquier código de salida distinto de 0 pone el build en rojo y avisa.
+pipeline {
+    agent { label 'etl-ventas' }
+
+    triggers {
+        cron('TZ=America/Bogota\nH(30-40) 4 * * *')
+    }
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        timeout(time: 75, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '60', artifactNumToKeepStr: '30'))
+    }
+
+    environment {
+        // Credenciales del almacén de Jenkins: llegan enmascaradas en el log.
+        SFTP_KEY              = credentials('sftp-proveedor-core')
+        SMTP_HOST             = credentials('smtp-host')
+        SMTP_USER             = credentials('smtp-reportes-usuario')
+        SMTP_PASSWORD         = credentials('smtp-reportes-clave')
+        REPORTE_DESTINATARIOS = 'gerencia.comercial@pagared.com'
+    }
+
+    stages {
+        stage('Esperar y descargar archivos del core') {
+            steps {
+                // Reintenta cada 5 minutos hasta 45 minutos (hasta las ~5:15). Si el core no entregó,
+                // el build falla con tiempo para avisar a la Gerencia antes de las 6:00.
+                timeout(time: 45, unit: 'MINUTES') {
+                    waitUntil(initialRecurrencePeriod: 300000) {
+                        script { return sh(returnStatus: true, script: 'infra/descargar_core.sh datos') == 0 }
+                    }
+                }
+            }
+        }
+
+        stage('Generar y enviar reporte') {
+            steps {
+                lock(resource: 'etl-ventas-pipeline') {
+                    // --user: los archivos de salida quedan a nombre del usuario de Jenkins.
+                    sh '''
+                        docker run --rm --user "$(id -u):$(id -g)" \
+                          -v "$WORKSPACE/datos:/app/datos:ro" -v "$WORKSPACE/salida:/app/salida" \
+                          -v "$WORKSPACE/logs:/app/logs" \
+                          -e SMTP_HOST -e SMTP_USER -e SMTP_PASSWORD -e REPORTE_DESTINATARIOS \
+                          pagared/ventas-pipeline:1.0 --enviar
+                    '''
+                }
+            }
+        }
+
+        stage('Guardar reporte') {
+            steps {
+                archiveArtifacts artifacts: 'salida/reporte_ventas_*.xlsx, logs/pipeline.log', fingerprint: true
+                // Supuesto: AWS CLI instalado en el agente y bucket pagared-reportes con retención.
+                sh 'aws s3 cp salida/ s3://pagared-reportes/ventas/ --recursive --exclude "*" --include "reporte_ventas_*.xlsx"'
+            }
+        }
+
+        stage('Actualizar Power BI') {
+            // Solo corre si todo lo anterior salió bien: el refresco depende de esta carga, no de un reloj.
+            steps {
+                withCredentials([string(credentialsId: 'powerbi-refresh-token', variable: 'PBI_TOKEN')]) {
+                    sh '''
+                        curl -fsS -X POST -H "Authorization: Bearer $PBI_TOKEN" -H "Content-Length: 0" \
+                          "https://api.powerbi.com/v1.0/myorg/groups/$PBI_WORKSPACE_ID/datasets/$PBI_DATASET_ID/refreshes"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            mail to: 'automatizacion@pagared.com',
+                 subject: "FALLÓ ${env.JOB_NAME} #${env.BUILD_NUMBER}: el reporte de ventas puede no llegar",
+                 body: "Revisar ${env.BUILD_URL}console. Si no se resuelve antes de las 5:45, avisar a la Gerencia Comercial."
+        }
+    }
+}
