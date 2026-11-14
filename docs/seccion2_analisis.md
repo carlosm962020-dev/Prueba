@@ -39,3 +39,25 @@
 8. Si el core corrige un registro, gana el de `fecha_actualizacion` más reciente.
 9. Sin servidor SMTP en la prueba, el pipeline deja el correo armado (.eml).
 10. Los datos del kit no traen información personal de clientes (id, punto, producto, valor, estado, canal).
+
+<div style="page-break-before: always"></div>
+
+## 2.4 Propuesta de solución
+
+![Arquitectura propuesta](img/arquitectura.png)
+
+**Dónde se ejecuta.** En Jenkins, con un agente dedicado y el pipeline en una imagen Docker. La base es SQLite en la prueba y Azure SQL en producción.
+
+**Modelo de datos.** Estrella con una transacción por fila (`id_transaccion` único), dimensiones de fecha, punto (SCD tipo 2 para cambios de zona), producto, canal y estado. La vista `vw_ventas` aplica las reglas de negocio una sola vez y de ahí leen el reporte y Power BI.
+
+**Cómo alerta.** Si el archivo no llega o no cuadra, o el pipeline falla, el job termina en rojo y escribe al equipo. A las 5:45 un job vigilante revisa que exista la marca de envío de la fecha y, si no, avisa también a Gerencia Comercial.
+
+**Cómo evita el doble envío.** Antes de enviar se crea de forma atómica una marca por fecha. Si ya existe, no se envía; si el envío falla, la marca se borra para que el reintento sí salga. En producción la marca es una tabla con llave única por fecha, y Jenkins no permite dos corridas a la vez.
+
+## 2.5 Plan de entrega
+
+| Fase | Cuándo | Qué recibe Laura |
+|---|------|---------------------------------------|
+| 1 | Lunes | El correo de las 6:00 a. m. con el Excel (Resumen, Comparativo, Calidad), con las reglas aplicadas, sin duplicados y con aviso si falla el archivo. La primera semana corre en paralelo con el Excel de Paola para comparar. |
+| 2 | Semanas 1 y 2 | Carga del incremental de la tarde y el vigilante de las 5:45. Power BI conectado a la vista, con refresco automático. Se aplican sus respuestas. |
+| 3 | Semanas 3 y 4 | Correo de corrección si lo pide, acceso por zona en Power BI, paso a Azure SQL, y un manual de operación para el equipo. |

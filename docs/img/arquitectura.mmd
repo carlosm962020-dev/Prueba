@@ -1,0 +1,20 @@
+%%{init: {'theme':'base','themeVariables':{'fontSize':'17px','primaryColor':'#eaf1f8','primaryBorderColor':'#4f6f8f','primaryTextColor':'#1b1b1b','lineColor':'#444','clusterBkg':'#fafafa','clusterBorder':'#b5b5b5','edgeLabelBackground':'#ffffff'},'flowchart':{'wrappingWidth':520,'nodeSpacing':35,'rankSpacing':38,'padding':10}}}%%
+flowchart TB
+  SFTP[("SFTP del core<br/>completo: 1:00 a. m.<br/>incremental: 6:00 p. m.")]
+  subgraph JEN["Jenkins · agente dedicado · 4:30 a. m. hora Colombia"]
+    direction LR
+    A["1 Esperar y validar<br/>el archivo"] --> B["2 Pipeline en Docker<br/>limpiar · reglas de negocio<br/>carga idempotente"] --> C["3 Enviar un solo correo<br/>marca atómica por fecha"]
+  end
+  DW[("Base relacional en estrella<br/>SQLite (prueba) · Azure SQL (producción)<br/>fact_transacciones · dim_fecha · dim_punto SCD2<br/>dim_producto · dim_canal · dim_estado · etl_cargas")]
+  LAURA(["Laura · 6:00 a. m.<br/>Excel de 3 hojas"])
+  PBI["Power BI<br/>vw_ventas · solo lectura<br/>refresco por API"]
+  VIG["Job vigilante 5:45<br/>¿existe la marca de hoy?"]
+  AL(["Alertas por correo<br/>Equipo: falla o archivo ausente<br/>Gerencia: sin envío a las 5:45"])
+  SFTP --> A
+  B --> DW
+  C -->|"SMTP con TLS"| LAURA
+  DW --> PBI
+  JEN -. "archivo ausente · no cuadra · falla" .-> AL
+  VIG -. "sin marca" .-> AL
+  classDef alerta fill:#fdecea,stroke:#c0392b,color:#1b1b1b;
+  class AL alerta;
