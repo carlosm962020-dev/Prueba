@@ -10,14 +10,18 @@ from datetime import timedelta, timezone
 OFFSET_COLOMBIA = timedelta(hours=-5)
 TZ_COLOMBIA = timezone(OFFSET_COLOMBIA, "America/Bogota")
 
+# Valores permitidos de cada campo categórico. Una fila con un valor que no está
+# aquí no se adivina ni se corrige: se descarta y queda en la hoja Calidad.
 ESTADOS = ("APROBADA", "RECHAZADA", "ANULADA", "REVERSADA")
 # Laura: "las ventas son lo aprobado; lo anulado no cuenta, pero lo reversado sí".
 ESTADOS_VENTA = ("APROBADA", "REVERSADA")
 PRODUCTOS = ("RECARGA", "PAGO_SERVICIOS", "GIRO")
 CANALES = ("POS", "WEB", "APP")
 
+# Zonas oficiales con su escritura canónica. El maestro llega con variantes
+# ("VALLE DE ABURRA", "oriente "); limpieza.normalizar_zona las lleva a esta lista.
 ZONAS = ("Valle de Aburrá", "Oriente", "Suroeste", "Norte", "Urabá")
-ZONA_SIN = "Sin zona"
+ZONA_SIN = "Sin zona"  # destino de las zonas vacías o desconocidas
 
 # Punto de pruebas de sistemas: no entra al reporte ni al modelo.
 PUNTOS_PRUEBA = frozenset({"90001"})
@@ -26,9 +30,11 @@ PUNTOS_PRUEBA = frozenset({"90001"})
 VIGENTE_DESDE_INICIAL = "1900-01-01"
 VIGENTE_HASTA_ABIERTA = "9999-12-31"
 
+# Formato de fecha y hora con el que se guarda todo en la base (texto ordenable).
 FMT_TS = "%Y-%m-%d %H:%M:%S"
 
-# Motivos (texto que ve Laura en la hoja Calidad).
+# Motivos de descarte (texto que ve Laura en la hoja Calidad). Están aquí y no
+# sueltos en la limpieza para que el texto sea el mismo en el reporte y en las pruebas.
 M_VERSION_ANTERIOR = "Versión anterior de la misma transacción (se conserva la más reciente)"
 M_DUPLICADO_EXACTO = "Duplicado exacto de otra fila (se conserva una)"
 M_PRUEBAS = "Punto de pruebas de sistemas (regla de negocio)"
