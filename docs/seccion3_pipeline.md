@@ -87,3 +87,52 @@ Decisiones:
   hechos ya cargados conservan la zona de su época. Es la respuesta al caso A9: el pasado no se mueve.
 * Todo el cargue (maestro, hechos y calidad) corre en una sola transacción. Si algo falla, no queda nada a medias.
 * Las tablas `dq_resumen`, `dq_descartados` y `etl_cargas` guardan la calidad y la bitácora de cada carga.
+
+## 3.3 Resultados del 27/10/2026
+
+Ventas por zona (APROBADA + REVERSADA, hora Colombia), antes y después de aplicar el delta:
+
+| Zona | Ventas antes | Trx antes | Ventas después | Trx después | Diferencia |
+|---|---:|---:|---:|---:|---:|
+| Valle de Aburrá | $448.811.200 | 1.097 | $414.550.400 | 1.090 | −$34.260.800 |
+| Oriente | $176.206.300 | 426 | $170.766.700 | 429 | −$5.439.600 |
+| Suroeste | $88.668.300 | 245 | $91.302.300 | 249 | +$2.634.000 |
+| Norte | $116.353.000 | 300 | $110.938.100 | 301 | −$5.414.900 |
+| Urabá | $93.390.200 | 271 | $96.810.800 | 278 | +$3.420.600 |
+| Sin zona | $31.003.200 | 93 | $31.837.400 | 97 | +$834.200 |
+| **Total** | **$954.432.200** | **2.432** | **$916.205.700** | **2.444** | **−$38.226.500** |
+
+Registros descartados con fecha del 27/10, por motivo:
+
+| Motivo | Antes (principal) | Después (principal + delta) |
+|---|---:|---:|
+| Versión anterior de la misma transacción | 59 | 60 |
+| Punto de pruebas | 12 | 12 |
+| `cod_punto` inexistente (00199) | 8 | 8 |
+| Duplicado exacto | 7 | 7 |
+| `cod_punto` vacío | 4 | 4 |
+| `valor` vacío | 3 | 3 |
+| **Total** | **93** | **94** |
+
+Carga del delta (2.111 filas leídas, 2.110 válidas): 2.005 insertadas, 52 actualizadas y 53 ignoradas. Las 53
+ignoradas traían una `fecha_actualizacion` igual o anterior a la que ya estaba cargada.
+
+Por qué cambia el 27/10 (la diferencia sale de dos efectos que se pueden contar):
+
+* Suma 50 ventas nuevas del 27/10 que el delta trae por primera vez: +$31.236.500.
+* Hay 52 transacciones del 27/10 con cambio de estado. 38 pasaron de APROBADA a ANULADA y dejan de contar:
+  −$69.463.000. Las otras 14 pasaron de APROBADA a REVERSADA y siguen contando, porque se cobró la comisión.
+
+Neto: +$31.236.500 − $69.463.000 = −$38.226.500, y +50 − 38 = +12 transacciones. Coincide con la tabla.
+
+Verificación: estos totales se reconstruyeron con un script aparte, que no usa el código del pipeline, desde los
+CSV crudos y coinciden hasta el último peso. La carga también se repitió tres veces (principal, delta y principal
+otra vez) sin cambiar un solo dato.
+
+## 3.4 Preguntas abiertas para Laura (afectan estos números)
+
+1. ¿A qué zona pertenece el punto `00133`? Hoy suma $31.837.400 como «Sin zona».
+2. ¿El `00117` es La Magnolia (Valle de Aburrá)? Se asumió que sí. Cambiarlo mueve ventas entre Valle y Oriente.
+3. ¿Qué hacemos con las 5 ventas aprobadas sin valor? Hoy quedan fuera y listadas en Calidad.
+4. ¿Las RECHAZADAS nunca cuentan? Se asumió que no.
+5. ¿El punto 00199 existe? Tiene 12 transacciones y no está en el maestro.
