@@ -1,0 +1,56 @@
+// Medidas del tablero (B6). Se crean en una tabla vacía llamada Medidas.
+// Modelo: fact_transacciones con relaciones muchos a uno hacia dim_fecha, dim_punto, dim_producto, dim_canal y dim_estado.
+// dim_fecha[fecha] debe ser de tipo Fecha y estar marcada como tabla de fechas.
+
+// ---- Obligatorias ----
+
+Ventas =
+CALCULATE (
+    SUM ( fact_transacciones[valor] ),
+    dim_estado[cuenta_como_venta] = 1
+)
+
+Transacciones =
+CALCULATE (
+    COUNTROWS ( fact_transacciones ),
+    dim_estado[cuenta_como_venta] = 1
+)
+
+Ticket promedio =
+DIVIDE ( [Ventas], [Transacciones] )
+
+Ventas día anterior =
+CALCULATE ( [Ventas], DATEADD ( dim_fecha[fecha], -1, DAY ) )
+
+Variación $ =
+[Ventas] - [Ventas día anterior]
+
+Variación % =
+DIVIDE ( [Variación $], [Ventas día anterior] )
+
+// ---- Complementarias (tarjetas y tabla) ----
+
+Variación % (texto) =
+VAR Previo = [Ventas día anterior]
+RETURN
+    IF (
+        ISBLANK ( [Ventas] ) && ISBLANK ( Previo ),
+        BLANK (),
+        IF (
+            ISBLANK ( Previo ) || Previo = 0,
+            "Zona nueva",
+            FORMAT ( [Variación %], "+0.0%;-0.0%" )
+        )
+    )
+
+Transacciones día anterior =
+CALCULATE ( [Transacciones], DATEADD ( dim_fecha[fecha], -1, DAY ) )
+
+Variación transacciones % =
+DIVIDE ( [Transacciones] - [Transacciones día anterior], [Transacciones día anterior] )
+
+Ticket día anterior =
+CALCULATE ( [Ticket promedio], DATEADD ( dim_fecha[fecha], -1, DAY ) )
+
+Variación ticket % =
+DIVIDE ( [Ticket promedio] - [Ticket día anterior], [Ticket día anterior] )
