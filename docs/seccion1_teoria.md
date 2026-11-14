@@ -1,7 +1,5 @@
 # Sección 1. Componente teórico (Parte A)
 
-Cada respuesta cabe en 8 líneas y lleva su justificación. Los resultados que cito (A1, A2, A3, A5, A8) los ejecuté antes de escribirlos; los de A6 y A9 son pruebas del repositorio.
-
 ## A1. SQL
 
 No cumple. El filtro `t.estado = 'APROBADA'` está en el WHERE, que se evalúa después del LEFT JOIN: en un punto sin ventas t.estado es NULL, la condición falla y la fila se descarta, así que el LEFT JOIN se comporta como INNER JOIN. Y SUM sobre cero filas devuelve NULL, no 0. Solución: pasar la condición al ON y usar COALESCE. Lo probé con tres puntos (con ventas, sin transacciones y solo anuladas): el original da 1 fila y el corregido 3.
