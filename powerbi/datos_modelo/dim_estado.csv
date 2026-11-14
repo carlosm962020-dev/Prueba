@@ -1,0 +1,5 @@
+﻿estado_key,estado,cuenta_como_venta
+1,APROBADA,1
+2,RECHAZADA,0
+3,ANULADA,0
+4,REVERSADA,1
