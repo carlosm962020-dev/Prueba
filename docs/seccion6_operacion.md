@@ -72,3 +72,60 @@ CREATE TABLE dw.control_cargas (
     registros_leidos INT, registros_validos INT, valor_cargado BIGINT, cargado_en DATETIME2 NOT NULL
 );
 ```
+
+## 6.2 Despliegue del pipeline de ventas
+
+Archivos: `infra/Dockerfile`, `infra/Jenkinsfile` (job diario), `infra/Jenkinsfile.vigilante` y
+`infra/descargar_core.sh`. No tengo Docker ni Jenkins en mi entorno: probé el script de descarga con un SFTP simulado
+(archivo de hoy, de ayer, antes de las 00:30 y ausente) y el resto está sin ejecutar. Hay que correr un primer
+`docker build` y revisar el Jenkinsfile con «Replay» antes de activarlo.
+
+### Dónde correrlo: Jenkins, con condiciones
+
+Propongo Jenkins. Ya existe y el equipo lo opera, guarda credenciales, ya llega al SFTP del proveedor, y los permisos
+de red hacia Azure SQL se piden una sola vez para una IP conocida. Con el plazo del lunes es lo que menos riesgo mete.
+
+El incidente de recaudos muestra el costo: es la misma plataforma que dejó una carga en cola 70 minutos. Por eso la
+propuesta lleva tres condiciones: un agente con etiqueta propia (`etl-ventas`) y dos ejecutores, el disparador a las
+4:30 y no a las 6:00, y un job vigilante a las 5:45.
+
+AWS queda como segundo paso si Jenkins sigue dando problemas o el servidor on-premise se retira. Sería EventBridge
+Scheduler (acepta zona horaria `America/Bogota` en el propio horario), una tarea en ECS Fargate con la misma imagen,
+S3 para los reportes, Secrets Manager y una alarma de CloudWatch. La conexión a Azure SQL saldría por una IP elástica
+fija. No escribí el Terraform opcional porque no tengo cómo validarlo aquí.
+
+### Cómo cubre cada punto
+
+| Tema | Propuesta |
+|---|---|
+| Hora | `cron('TZ=America/Bogota\nH(30-40) 4 * * *')`. Sin cuentas de UTC. El correo sale en cuanto el reporte está listo, antes de las 6:00. |
+| Credenciales | Almacén de credenciales de Jenkins (`credentials()`), enmascaradas en el log; nada en el repositorio ni en la imagen. En Azure SQL, un usuario con permisos mínimos y no `admin_etl`. La contraseña que aparece escrita en `enviar_reporte.py` hay que rotarla. |
+| Logs | `logs/pipeline.log` con lo leído, descartado y cargado, más la consola de Jenkins. Se archivan por build (60 builds) y no contienen secretos (hay una prueba que lo comprueba). |
+| Alertas por falla | El pipeline sale con código distinto de 0 ante cualquier falla y el `post { failure }` envía correo. |
+| Si no llega el archivo | `descargar_core.sh` solo da por buena la descarga si `transacciones.csv` es de hoy. El job reintenta cada 5 minutos hasta unos 45 minutos y luego falla, a las 5:15. A las 5:45 el vigilante revisa si existe la marca de envío y, si no, escribe también a la Gerencia Comercial: Laura se entera antes de las 6:00. |
+| Si el job ni arrancó | Lo cubre el vigilante, que corre aparte. |
+| Doble envío | Marca de envío creada de forma atómica antes de enviar, en `salida/.enviados/AAAAMMDD`. Tiene que vivir en un disco que persista entre builds. |
+| Power BI | El refresco se dispara por API al final del job, solo si todo salió bien (etapa «Actualizar Power BI»), y se desactiva el programado. El token de la API es un supuesto: falta definir el principal de servicio. El correo de Laura no depende de Power BI. |
+| Dónde se guardan los reportes | Excel archivado en Jenkins, copia en un bucket S3 con retención (supuesto: hay AWS CLI en el agente) y, sobre todo, la base: el Excel de cualquier día se vuelve a generar con `--fecha-corte`. La retención la define Finanzas. |
+
+## 6.3 Conectividad con Azure
+
+El error 40615 quiere decir que la conexión llegó al servidor, o sea que el DNS y la red funcionan y que no es un
+problema de usuario o contraseña. El firewall de Azure SQL rechazó la IP pública de salida de la empresa
+(`190.85.xx.xx`) porque no está en ninguna regla.
+
+De la más rápida a la más segura:
+
+1. **Regla de firewall con la IP pública de salida de Jenkins.** Se crea en el portal o con
+   `az sql server firewall-rule create`, y funciona en minutos. Conviene preferir una regla a nivel de base de datos y
+   confirmar con redes que la IP es fija: si cambia, el job vuelve a fallar sin aviso. Y esa IP la comparte toda la
+   empresa y el servidor sigue expuesto a internet.
+2. **IP de salida fija y dedicada, con autenticación mejor.** Que el tráfico de este job salga por una IP reservada solo
+   para él, abrir el firewall únicamente para ella, y cambiar el usuario SQL con contraseña por una identidad de
+   Microsoft Entra (principal de servicio) con permisos mínimos y `Encrypt=yes`. Toma días, y el servidor sigue siendo
+   público.
+3. **VPN sitio a sitio o ExpressRoute más Private Endpoint**, con el acceso público del servidor desactivado. El tráfico
+   no pasa por internet. Es lo más seguro y lo más lento: requiere redes, un DNS que resuelva
+   `privatelink.database.windows.net` y semanas de coordinación.
+
+Recomiendo la 1 hoy, con dueño y fecha de revisión, y la 3 como destino.
