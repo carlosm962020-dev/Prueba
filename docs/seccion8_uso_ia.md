@@ -9,7 +9,7 @@ Se utilizó Claude (Anthropic) como herramienta de asistencia técnica durante e
 - **Documentación:** apoyo en la estructuración del informe, comentarios del código y elaboración del README.
 - **Power BI:** asistencia en la elaboración y revisión de medidas DAX.
 
-El desarrollo, integración y validación de los entregables se realizaron mediante revisión directa del código, ejecución de pruebas y contraste de resultados. El tablero de Power BI fue construido directamente en Power BI Desktop.
+El desarrollo, integración y validación de los entregables se realizaron mediante revisión directa del código, ejecución de pruebas y contraste de resultados. El tablero de Power BI fue construido directamente en Power BI Desktop. La imagen de fondo del tablero se generó con Gemini (Google).
 
 ## 8.2 Instrucciones (prompts) relevantes utilizadas
 
