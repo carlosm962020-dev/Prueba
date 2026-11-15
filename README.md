@@ -39,6 +39,10 @@ Resultados: `salida/reporte_ventas_20261027.xlsx` (hojas Resumen, Comparativo y 
 | `--parquet` | Exporta los hechos a Parquet particionado por fecha (`salida/parquet/.../fecha=AAAA-MM-DD`). |
 | `--enviar` | Envía el correo por SMTP, una sola vez por fecha. Requiere `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER` y `SMTP_PASSWORD` como variables de entorno. |
 
+Para ver las consultas de B3 con su resultado: `python sql/ejecutar_consultas.py`.
+Para revisar el script de B4 sin enviar nada: `python revision/enviar_reporte_v2.py --dry-run`
+(requiere las variables de entorno descritas en su encabezado).
+
 Código de salida del pipeline: 0 si todo salió bien y distinto de 0 ante cualquier falla (archivo que no llegó,
 columnas distintas, conteos que no cuadran, ninguna transacción en la fecha de corte).
 
@@ -48,7 +52,39 @@ columnas distintas, conteos que no cuadran, ninguna transacción en la fecha de 
 python -m pytest
 ```
 
-23 pruebas: limpieza, carga incremental e idempotencia, atomicidad, historia de zonas, comparativo con zona nueva, correo sin doble envío y corridas completas del orquestador.
+39 pruebas: limpieza, carga incremental e idempotencia, atomicidad, historia de zonas,
+comparativo con zona nueva, correo sin doble envío, corridas completas del orquestador, el
+script corregido de B4 y la carga corregida de recaudos (B5).
+
+## Estructura
+
+```
+etl/limpieza.py   lectura y reglas de limpieza (sin base de datos)
+etl/modelo.py     esquema en estrella, carga idempotente, delta y calidad
+etl/reporte.py    Excel de tres hojas
+etl/correo.py     correo .eml y envío único
+etl/exportar.py   CSV y Parquet
+etl/pipeline.py   orquestador y línea de comandos
+tests/            pruebas con pytest
+sql/              consultas de B3 (consultas.sql) y ejecutar_consultas.py para verlas con resultados
+revision/         enviar_reporte_v2.py, versión corregida del script de B4
+infra/            Dockerfile, Jenkinsfile (+ vigilante), descargar_core.sh y la carga corregida de recaudos (B5)
+powerbi/          B6: datos_modelo/ (CSV del modelo en estrella con el delta aplicado), medidas.dax,
+                  tablero_ventas.pbix y los pantallazos del tablero
+docs/             secciones del informe (1 teoría, 2 análisis B1, 3 pipeline, 4 SQL, 5 revisión,
+                  6 operación, 7 Power BI, 8 uso de IA)
+docs/img/         diagrama de arquitectura de B1 (arquitectura.mmd es la fuente Mermaid; el .png se regenera con mmdc)
+```
+
+El informe consolidado es `INFORME_<nombre>.pdf`, en la raíz.
+
+## Contenedor
+
+```bash
+docker build -f infra/Dockerfile -t pagared/ventas-pipeline:1.0 .
+```
+
+El Dockerfile y los Jenkinsfile no se probaron en mi entorno (sin Docker ni Jenkins); ver `docs/seccion6_operacion.md`.
 
 ## Reglas de negocio (correo de Laura)
 
